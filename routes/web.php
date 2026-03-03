@@ -33,6 +33,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/cgi/{id}/make-video', [CgiGenerationController::class, 'makeVideo'])->name('cgi.make-video');
     Route::get('/cgi/videos', [CgiGenerationController::class, 'videoGallery'])->name('cgi.videos');
     Route::get('/cgi/images', [CgiGenerationController::class, 'imageGallery'])->name('cgi.images');
+    Route::post('/cgi/apply-branding', [CgiGenerationController::class, 'applyBranding'])->name('cgi.applyBranding');
 });
 
 // --- NEW CALLBACK ROUTE ---        

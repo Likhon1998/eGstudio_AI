@@ -164,11 +164,25 @@ public function updatePrompts(Request $request, $id)
         return response()->json(['error' => 'Record not found'], 404);
     }
 
-    // PATH C: The Video Render is FINISHED (New Logic)
+    // PATH D: The Branding is FINISHED (New Logic)
+    if ($request->has('branded_image_url') || $request->has('branded_video_url')) {
+        $updateData = [];
+        if ($request->has('branded_image_url')) {
+            $updateData['branded_image_url'] = $request->input('branded_image_url');
+        }
+        if ($request->has('branded_video_url')) {
+            $updateData['branded_video_url'] = $request->input('branded_video_url');
+        }
+        
+        $generation->update($updateData);
+        return response()->json(['status' => 'success', 'message' => 'Branded Media Saved']);
+    }
+
+    // PATH C: The Video Render is FINISHED (Existing Logic)
     if ($request->has('video_url') && $request->video_url !== null) {
         $generation->update([
             'video_url'    => $request->input('video_url'),
-            'video_status' => 'completed' // This stops the video loading spinner
+            'video_status' => 'completed' 
         ]);
         return response()->json(['status' => 'success', 'message' => 'Video Render Saved']);
     }
@@ -177,7 +191,7 @@ public function updatePrompts(Request $request, $id)
     if ($request->has('image_url') && $request->image_url !== null) {
         $generation->update([
             'image_url'    => $request->input('image_url'),
-            'image_status' => 'completed' // This stops the image loading spinner
+            'image_status' => 'completed' 
         ]);
         return response()->json(['status' => 'success', 'message' => 'Image Render Saved']);
     }
@@ -264,5 +278,65 @@ public function imageGallery()
         ->get();
 
     return view('cgi.image-gallery', compact('images'));
+}
+
+public function applyBranding(Request $request)
+{
+    // 1. Validate the incoming request
+    $request->validate([
+        'id' => 'required|exists:cgi_generations,id',
+        'logo' => 'required|image|mimes:png,jpg,jpeg,svg|max:5120', // Max 5MB
+    ]);
+
+    // 2. Fetch the secure, authentic links directly from the Database
+    $generation = CgiGeneration::where('id', $request->id)
+        ->where('user_id', Auth::id())
+        ->firstOrFail();
+
+    // 3. Set status to 'making' so the frontend spinners activate
+    $generation->update([
+        'image_status' => 'making',
+        'video_status' => 'making'
+    ]);
+
+    // 4. Define your n8n webhook URL
+    $webhookUrl = 'https://n8n.egeneration.co/webhook/eGStudio_ApplyBranding';
+
+    try {
+        // 5. Send the multipart form request (Logo file + Database URLs) to n8n
+        $response = Http::withoutVerifying()
+            ->attach(
+                'logo', 
+                file_get_contents($request->file('logo')->getRealPath()), 
+                $request->file('logo')->getClientOriginalName()
+            )
+            ->post($webhookUrl, [
+                'id' => $generation->id,
+                'image_url' => $generation->image_url,
+                'video_url' => $generation->video_url,
+            ]);
+
+        if ($response->successful()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Branding pipeline initiated!'
+            ]);
+        }
+
+        // If n8n returns an error, revert the status
+        $generation->update([
+            'image_status' => 'completed',
+            'video_status' => 'completed'
+        ]);
+        return response()->json(['success' => false, 'message' => 'n8n processing failed.'], 500);
+
+    } catch (\Exception $e) {
+        // If the connection to n8n drops entirely, revert the status
+        $generation->update([
+            'image_status' => 'completed',
+            'video_status' => 'completed'
+        ]);
+        return response()->json(['success' => false, 'message' => 'Branding engine offline.'], 500);
+    }
 }
 }

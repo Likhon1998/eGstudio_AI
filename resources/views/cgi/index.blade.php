@@ -10,7 +10,7 @@
             remove(id) { this.notifications = this.notifications.filter(n => n.id !== id); } 
         }" 
         @notify.window="add($event.detail.message, $event.detail.type)"
-        class="fixed top-6 right-6 z-[1000] flex flex-col gap-3 w-80">
+        class="fixed top-6 right-6 z-[2500] flex flex-col gap-3 w-80">
         
         <template x-for="n in notifications" :key="n.id">
             <div x-transition:enter="transition ease-out duration-300"
@@ -32,7 +32,7 @@
     </div>
 
     {{-- Main Workspace --}}
-    <div class="max-w-full mx-auto bg-[#050505] min-h-screen">
+    <div class="max-w-full mx-auto bg-[#050505] min-h-screen" x-data="{ brandingModal: false, activeGenId: null, activeImageUrl: '', activeVideoUrl: '', isUploadingLogo: false, activePreviewUrl: '' }">
         
         {{-- Slim Top Toolbar --}}
         <div class="flex items-center justify-between px-8 py-4 border-b border-white/5 bg-[#0a0a0a]">
@@ -67,8 +67,10 @@
                             @foreach($generations as $gen)
                             <tr x-data="{
                                 status: '{{ $gen->status }}',
-                                imageStatus: '{{ $gen->image_status }}',
-                                videoStatus: '{{ $gen->video_status ?? 'pending' }}',
+                                
+                                imageStatus: '{{ $gen->image_url ? "completed" : $gen->image_status }}',
+                                videoStatus: '{{ $gen->video_url ? "completed" : ($gen->video_status ?? "pending") }}',
+                                
                                 openModal: null, isEditing: false, isSaving: false, isTriggering: false, isVideoTriggering: false,
                                 
                                 liveImagePrompt: @js($gen->image_prompt),
@@ -79,7 +81,16 @@
                                 inputVideo: @js($gen->video_prompt), 
                                 inputAudio: @js($gen->audio_prompt),
 
-                                imageUrl: '{{ $gen->image_url }}', videoUrl: '{{ $gen->video_url }}',
+                                imageUrl: '{{ $gen->image_url }}', 
+                                videoUrl: '{{ $gen->video_url }}',
+                                
+                                brandedImageUrl: '{{ $gen->branded_image_url ?? '' }}',
+                                brandedVideoUrl: '{{ $gen->branded_video_url ?? '' }}',
+                                
+                                {{-- THE FIX: Hardcode to 'false' if both URLs exist, ignoring stuck sessionStorage --}}
+                                isBranding: ('{{ $gen->branded_image_url ?? '' }}' !== '' && '{{ $gen->branded_video_url ?? '' }}' !== '') 
+                                            ? false 
+                                            : (sessionStorage.getItem('branding_{{ $gen->id }}') === 'true'),
 
                                 async saveChanges(){
                                     if(this.isSaving) return;
@@ -118,6 +129,7 @@
                                         if(data.success) { 
                                             this.imageStatus = 'making'; 
                                             $dispatch('notify', { message: 'Image Generation Queued', type: 'info' });
+                                            setTimeout(() => { location.reload(); }, 10000);
                                         }
                                     } catch(e) { $dispatch('notify', { message: 'Render Server Offline', type: 'error' }); }
                                     finally { this.isTriggering = false; }
@@ -135,13 +147,28 @@
                                         if(data.success) { 
                                             this.videoStatus = 'making'; 
                                             $dispatch('notify', { message: 'Video Synthesis Started', type: 'info' });
+                                            setTimeout(() => { location.reload(); }, 10000);
                                         }
                                     } catch(e) { $dispatch('notify', { message: 'Pipeline Error', type: 'error' }); }
                                     finally { this.isVideoTriggering = false; }
                                 }
                             }"
-                            x-init="if(status==='processing'){setInterval(()=>{location.reload();},15000);}"
-                            x-effect="if(imageStatus==='making' || videoStatus==='making'){setInterval(()=>{location.reload();},10000);}"
+                            x-init="
+                                // If the URLs arrived, immediately destroy the sessionStorage flag
+                                if(brandedImageUrl && brandedVideoUrl) {
+                                    sessionStorage.removeItem('branding_{{ $gen->id }}');
+                                }
+                                // THE FIX: Run a clean timeout ONLY if something is actually still rendering/branding
+                                if(status === 'processing' || imageStatus === 'making' || videoStatus === 'making' || isBranding) {
+                                    setTimeout(() => { location.reload(); }, 10000);
+                                }
+                            "
+                            @start-branding.window="
+                                if($event.detail === '{{ $gen->id }}') {
+                                    isBranding = true;
+                                    setTimeout(() => { location.reload(); }, 10000);
+                                }
+                            "
                             class="hover:bg-white/[0.01] transition-colors"
                             >
 
@@ -169,72 +196,89 @@
                                         </div>
                                     @else
                                         <div class="flex items-center gap-3">
-                                            {{-- IMAGE BUTTON --}}
-                                            <button @click="imageUrl ? openModal='preview' : triggerMakePicture()" :disabled="imageStatus==='making' || isTriggering"
+                                            {{-- ORIGINAL IMAGE BUTTON LOGIC --}}
+                                            <button @click="imageUrl ? (openModal='preview', activePreviewUrl=imageUrl) : triggerMakePicture()" :disabled="imageStatus==='making' || isTriggering"
                                                 class="h-9 px-5 text-[10px] font-black rounded transition-all uppercase tracking-widest flex items-center gap-2 border shadow-lg"
                                                 :class="{
-                                                    'bg-emerald-500 border-emerald-500 text-black animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.4)]': imageStatus === 'making',
-                                                    'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white shadow-emerald-500/10': (imageUrl && imageStatus !== 'making'),
-                                                    'bg-[#1a1a1a] text-gray-300 border-white/10 hover:bg-white hover:text-black': (!imageUrl && imageStatus !== 'making')
+                                                    'bg-emerald-500 border-emerald-500 text-black animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.4)]': imageStatus === 'making' && !imageUrl,
+                                                    'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white': imageUrl,
+                                                    'bg-white text-black border-transparent hover:bg-blue-600 hover:text-white': !imageUrl && imageStatus !== 'making'
                                                 }">
-                                                <span x-text="imageStatus==='making' ? 'RENDERING...' : (imageUrl ? 'View Pic' : 'Make Pic')"></span>
+                                                <span x-text="(imageStatus==='making' && !imageUrl) ? 'RENDERING...' : (imageUrl ? 'View Pic' : 'Make Pic')"></span>
                                             </button>
 
-                                            {{-- VIDEO BUTTON --}}
-                                            <button @click="videoUrl ? openModal='videoPreview' : triggerMakeVideo()" :disabled="videoStatus==='making' || isVideoTriggering || !imageUrl"
+                                            {{-- ORIGINAL VIDEO BUTTON LOGIC --}}
+                                            <button @click="videoUrl ? (openModal='videoPreview', activePreviewUrl=videoUrl) : triggerMakeVideo()" :disabled="videoStatus==='making' || isVideoTriggering || !imageUrl"
                                                 class="h-9 px-5 text-[10px] font-black rounded transition-all uppercase tracking-widest flex items-center gap-2 border disabled:opacity-10 shadow-lg"
                                                 :class="{
-                                                    'bg-pink-500 border-pink-500 text-black animate-pulse shadow-[0_0_15px_rgba(236,72,153,0.4)]': videoStatus === 'making',
-                                                    'bg-pink-500/10 border-pink-500/20 text-pink-400 hover:bg-pink-500 hover:text-white shadow-pink-500/10': (videoUrl && videoStatus !== 'making'),
-                                                    'bg-[#1a1a1a] text-gray-300 border-white/10 hover:bg-white hover:text-black': (!videoUrl && videoStatus !== 'making')
+                                                    'bg-pink-500 border-pink-500 text-black animate-pulse shadow-[0_0_15px_rgba(236,72,153,0.4)]': videoStatus === 'making' && !videoUrl,
+                                                    'bg-pink-500/10 border-pink-500/20 text-pink-400 hover:bg-pink-500 hover:text-white shadow-pink-500/10': videoUrl,
+                                                    'bg-[#1a1a1a] text-gray-300 border-white/10 hover:bg-white hover:text-black': !videoUrl && videoStatus !== 'making'
                                                 }">
-                                                <span x-text="videoStatus==='making' ? 'SYNTHESIZING...' : (videoUrl ? 'View Video' : 'Make Video')"></span>
+                                                <span x-text="(videoStatus==='making' && !videoUrl) ? 'SYNTHESIZING...' : (videoUrl ? 'View Video' : 'Make Video')"></span>
                                             </button>
 
-                                            {{-- REDESIGNED SOCIAL MEDIA BUTTON --}}
+                                            {{-- SHOW "ADD LOGO" ONLY IF NOT BRANDING AND NOT FINISHED --}}
+                                            <template x-if="imageUrl && videoUrl && (!brandedImageUrl || !brandedVideoUrl) && !isBranding">
+                                                <button @click="brandingModal = true; activeGenId = '{{ $gen->id }}'; activeImageUrl = imageUrl; activeVideoUrl = videoUrl;" 
+                                                    class="h-9 px-5 bg-white/5 border border-white/10 hover:border-blue-500/50 text-gray-400 hover:text-blue-400 rounded transition-all uppercase tracking-widest text-[9px] font-black flex items-center gap-2 shadow-lg">
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                                    Add Logo
+                                                </button>
+                                            </template>
+
+                                            {{-- SHOW "BRANDING..." LOADER IF IN PROGRESS --}}
+                                            <template x-if="isBranding && (!brandedImageUrl || !brandedVideoUrl)">
+                                                <button disabled class="h-9 px-5 bg-blue-600 border border-blue-500 text-white rounded transition-all uppercase tracking-widest text-[9px] font-black flex items-center gap-2 shadow-lg animate-pulse shadow-[0_0_15px_rgba(37,99,235,0.4)]">
+                                                    BRANDING...
+                                                </button>
+                                            </template>
+
+                                            {{-- SHOW "BRANDED" BUTTONS WHEN DONE --}}
+                                            <template x-if="brandedImageUrl && brandedVideoUrl">
+                                                <div class="flex items-center gap-3">
+                                                    <button @click="openModal='brandedPreview'" class="h-9 px-5 bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded transition-all uppercase tracking-widest text-[9px] font-black shadow-lg">
+                                                        Branded Pic
+                                                    </button>
+                                                    <button @click="openModal='brandedVideoPreview'" class="h-9 px-5 bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-600 hover:text-white rounded transition-all uppercase tracking-widest text-[9px] font-black shadow-lg">
+                                                        Branded Video
+                                                    </button>
+                                                </div>
+                                            </template>
+
+                                            {{-- SOCIAL MEDIA BUTTON --}}
                                             <button 
-                                                @click="$dispatch('notify', { message: 'Initializing Social Relay...', type: 'info' })"
-                                                class="h-9 px-5 bg-gradient-to-r from-indigo-600/10 to-blue-600/10 border border-indigo-500/20 hover:border-indigo-400/50 text-indigo-400 hover:text-white rounded transition-all duration-300 uppercase tracking-[0.12em] text-[9px] font-black flex items-center gap-2.5 group shadow-[0_4px_15px_rgba(99,102,241,0.05)] hover:shadow-[0_4px_20px_rgba(99,102,241,0.15)] relative overflow-hidden">
-                                                
-                                                {{-- Background Pulse Effect --}}
-                                                <div class="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                                                
-                                                <svg class="w-3.5 h-3.5 transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
-                                                </svg>
-                                                <span class="relative">Post Assets</span>
+                                                class="h-9 px-5 text-[10px] font-black rounded transition-all uppercase tracking-widest flex items-center gap-2 border bg-indigo-600/10 border-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white shadow-lg shadow-indigo-900/10"
+                                                @click="$dispatch('notify', { message: 'Social Media Integrations Coming Soon', type: 'info' })">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                                                Post Assets
                                             </button>
                                         </div>
                                     @endif
 
-                                    {{-- Modals and Previews remain unchanged --}}
+                                    {{-- Modals and Previews --}}
                                     <template x-teleport="body">
                                         <div x-show="openModal" class="fixed inset-0 z-[999] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md" x-cloak>
+                                            
+                                            {{-- Prompt Viewer Modal --}}
                                             <div x-show="['image','video','audio'].includes(openModal)" class="bg-[#0a0a0a] border border-white/10 w-full max-w-xl rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
                                                 <div class="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
-                                                    <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]" x-text="openModal + ' Directive Definition'"></h3>
+                                                    <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]" x-text="openModal.toUpperCase() + ' DIRECTIVE DEFINITION'"></h3>
                                                     <button @click="openModal=null" class="text-gray-500 hover:text-white text-lg">✕</button>
                                                 </div>
                                                 <div class="p-8">
                                                     <div x-show="!isEditing" class="bg-black p-5 rounded border border-white/5 font-mono text-xs text-gray-400 max-h-[40vh] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner" x-text="openModal==='image' ? liveImagePrompt : (openModal==='video' ? liveVideoPrompt : liveAudioPrompt)"></div>
+                                                    
                                                     <div x-show="isEditing">
-                                                        <template x-if="openModal==='image'">
-                                                            <textarea x-model="inputImage" class="w-full h-48 bg-black border border-white/10 rounded p-5 text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all"></textarea>
-                                                        </template>
-                                                        <template x-if="openModal==='video'">
-                                                            <textarea x-model="inputVideo" class="w-full h-48 bg-black border border-white/10 rounded p-5 text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all"></textarea>
-                                                        </template>
-                                                        <template x-if="openModal==='audio'">
-                                                            <textarea x-model="inputAudio" class="w-full h-48 bg-black border border-white/10 rounded p-5 text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all"></textarea>
-                                                        </template>
+                                                        <template x-if="openModal==='image'"><textarea x-model="inputImage" class="w-full h-48 bg-black border border-white/10 rounded p-5 text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all"></textarea></template>
+                                                        <template x-if="openModal==='video'"><textarea x-model="inputVideo" class="w-full h-48 bg-black border border-white/10 rounded p-5 text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all"></textarea></template>
+                                                        <template x-if="openModal==='audio'"><textarea x-model="inputAudio" class="w-full h-48 bg-black border border-white/10 rounded p-5 text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all"></textarea></template>
                                                     </div>
                                                 </div>
                                                 <div class="px-8 py-5 border-t border-white/5 flex justify-end gap-3 bg-white/[0.01]">
                                                     <template x-if="(openModal==='image' && !imageUrl) || ( (openModal==='video' || openModal==='audio') && !videoUrl )">
                                                         <div class="flex gap-2">
-                                                            <button @click="isEditing=!isEditing" class="px-5 py-2.5 bg-gray-800 text-white rounded text-[10px] font-black uppercase tracking-widest hover:bg-gray-700 transition-colors">
-                                                                <span x-text="isEditing?'Cancel':'Modify Prompt'"></span>
-                                                            </button>
+                                                            <button @click="isEditing=!isEditing" class="px-5 py-2.5 bg-gray-800 text-white rounded text-[10px] font-black uppercase tracking-widest hover:bg-gray-700 transition-colors"><span x-text="isEditing?'Cancel':'Modify Prompt'"></span></button>
                                                             <button x-show="isEditing" @click="saveChanges()" :disabled="isSaving" class="px-5 py-2.5 bg-blue-600 text-white rounded text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20">Sync Data</button>
                                                         </div>
                                                     </template>
@@ -244,15 +288,27 @@
                                                 </div>
                                             </div>
 
-                                            <div x-show="openModal=== 'preview' || openModal==='videoPreview'" class="relative w-full max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+                                            {{-- Asset Preview Modal --}}
+                                            <div x-show="['preview', 'videoPreview', 'brandedPreview', 'brandedVideoPreview'].includes(openModal)" class="relative w-full max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300">
                                                 <button @click="openModal=null" class="absolute -top-12 right-0 text-white text-[10px] font-black uppercase tracking-[0.2em] bg-white/5 px-4 py-2 rounded-full hover:bg-red-500 transition-all">Close Pipeline ✕</button>
                                                 <div class="bg-black border border-white/10 rounded-xl overflow-hidden shadow-2xl">
+                                                    
+                                                    {{-- EXACT ORIGINAL PREVIEW CALLS --}}
                                                     <template x-if="openModal==='preview'">
                                                         <img :src="imageUrl" class="w-full max-h-[80vh] object-contain">
                                                     </template>
                                                     <template x-if="openModal==='videoPreview'">
                                                         <video :src="videoUrl" class="w-full max-h-[80vh] object-contain" controls autoplay loop playsinline></video>
                                                     </template>
+
+                                                    {{-- BRANDED PREVIEW CALLS --}}
+                                                    <template x-if="openModal==='brandedPreview'">
+                                                        <img :src="brandedImageUrl" class="w-full max-h-[80vh] object-contain">
+                                                    </template>
+                                                    <template x-if="openModal==='brandedVideoPreview'">
+                                                        <video :src="brandedVideoUrl" class="w-full max-h-[80vh] object-contain" controls autoplay loop playsinline></video>
+                                                    </template>
+
                                                 </div>
                                             </div>
                                         </div>
@@ -260,10 +316,13 @@
                                 </td>
 
                                 <td class="px-8 py-6 text-right">
-                                    <form action="{{ route('cgi.destroy', $gen->id) }}" method="POST" onsubmit="return confirm('Purge directive?');">
+                                    {{-- DELETE BUTTON --}}
+                                    <form action="{{ route('cgi.destroy', $gen->id) }}" method="POST" onsubmit="return confirm('Purge directive and all associated assets?');">
                                         @csrf @method('DELETE')
-                                        <button class="text-gray-800 hover:text-red-500 transition-colors p-2">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        <button type="submit" class="group flex items-center justify-center h-9 w-9 bg-white/5 border border-white/10 hover:bg-red-500/10 hover:border-red-500/30 rounded transition-all ml-auto">
+                                            <svg class="w-4 h-4 text-gray-500 group-hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
                                         </button>
                                     </form>
                                 </td>
@@ -274,6 +333,67 @@
                 </div>
             </div>
         </div>
+
+        {{-- BRANDING UPLOAD MODAL --}}
+        <template x-teleport="body">
+            <div x-show="brandingModal" class="fixed inset-0 z-[2100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl" x-cloak>
+                <div class="bg-[#0a0a0a] border border-white/10 w-full max-w-md rounded-2xl p-8 shadow-2xl animate-in zoom-in duration-300" @click.away="brandingModal = false">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <h2 class="text-white font-black uppercase tracking-[0.2em] text-sm">Apply Brand Identity</h2>
+                            <p class="text-gray-500 text-[9px] uppercase font-bold mt-1">Overlay Logo on Rendered Assets</p>
+                        </div>
+                        <button @click="brandingModal = false" class="text-gray-600 hover:text-white transition-colors">✕</button>
+                    </div>
+                    
+                    <form @submit.prevent="
+                        isUploadingLogo = true;
+                        let formData = new FormData($el);
+                        formData.append('id', activeGenId);
+                        formData.append('logo', $el.querySelector('input[type=file]').files[0]);
+
+                        fetch('/cgi/apply-branding', {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                            body: formData
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            if(data.success) {
+                                brandingModal = false;
+                                
+                                // Set storage to trigger the auto-reloads
+                                sessionStorage.setItem('branding_' + activeGenId, 'true');
+                                
+                                // Immediately tell the specific row to show BRANDING... and start reloading
+                                $dispatch('start-branding', activeGenId);
+                                
+                                $dispatch('notify', { message: 'Neural Branding Initiated', type: 'success' });
+                            } else {
+                                $dispatch('notify', { message: data.message || 'Branding Failed', type: 'error' });
+                            }
+                        })
+                        .catch(err => {
+                            $dispatch('notify', { message: 'Server Connection Error', type: 'error' });
+                        })
+                        .finally(() => isUploadingLogo = false);
+                    ">
+                        <div class="relative group border-2 border-dashed border-white/5 rounded-xl p-10 text-center hover:border-blue-500/30 transition-all bg-white/[0.01]">
+                            <input type="file" name="logo" required class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <svg class="w-10 h-10 text-gray-700 mx-auto mb-4 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            <span class="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Upload PNG/SVG Logo</span>
+                        </div>
+
+                        <div class="mt-8">
+                            <button type="submit" :disabled="isUploadingLogo" class="w-full py-4 bg-blue-600 text-white text-[10px] font-black rounded-lg uppercase tracking-widest shadow-lg shadow-blue-600/20 disabled:opacity-50 flex items-center justify-center gap-3">
+                                <span x-text="isUploadingLogo ? 'CONNECTING...' : 'START BRANDING RENDER'"></span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </template>
+
     </div>
 
     <style>
@@ -283,4 +403,4 @@
         ::-webkit-scrollbar-track { background: #050505; }
         ::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 10px; }
     </style>
-</x-app-layout>F
+</x-app-layout>
