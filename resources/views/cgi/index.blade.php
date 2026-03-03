@@ -38,7 +38,7 @@
         <div class="flex items-center justify-between px-8 py-4 border-b border-white/5 bg-[#0a0a0a]">
             <div>
                 <h1 class="text-[13px] font-black text-white tracking-[0.2em] uppercase flex items-center gap-3">
-                    <span class="w-1 h-5 bg-blue-600 rounded-full"></span>
+                    <span class="w-1 h-5 bg-blue-600 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.5)]"></span>
                     CGI Directive Studio
                 </h1>
                 <p class="text-[9px] text-gray-600 font-bold uppercase tracking-widest mt-0.5">Neural Asset Pipeline v3.2</p>
@@ -148,7 +148,7 @@
                                 <td class="px-8 py-6">
                                     <div class="flex flex-col">
                                         <span class="text-[13px] font-black text-gray-100 uppercase tracking-wider">{{ $gen->product_name }}</span>
-                                        <span class="text-[10px] text-gray-500 mt-0.5 font-bold">{{ $gen->marketing_angle }}</span>
+                                        <span class="text-[10px] text-gray-500 mt-0.5 font-bold italic">{{ $gen->marketing_angle }}</span>
                                         <span class="mt-2 text-[8px] font-black text-blue-500/80 uppercase tracking-[0.2em]">{{ $gen->visual_prop }}</span>
                                     </div>
                                 </td>
@@ -174,26 +174,40 @@
                                                 class="h-9 px-5 text-[10px] font-black rounded transition-all uppercase tracking-widest flex items-center gap-2 border shadow-lg"
                                                 :class="{
                                                     'bg-emerald-500 border-emerald-500 text-black animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.4)]': imageStatus === 'making',
-                                                    'bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-white': (imageUrl && imageStatus !== 'making'),
-                                                    'bg-white text-black border-transparent hover:bg-blue-600 hover:text-white': (!imageUrl && imageStatus !== 'making')
+                                                    'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white shadow-emerald-500/10': (imageUrl && imageStatus !== 'making'),
+                                                    'bg-[#1a1a1a] text-gray-300 border-white/10 hover:bg-white hover:text-black': (!imageUrl && imageStatus !== 'making')
                                                 }">
                                                 <span x-text="imageStatus==='making' ? 'RENDERING...' : (imageUrl ? 'View Pic' : 'Make Pic')"></span>
                                             </button>
 
-                                            {{-- VIDEO BUTTON - UPDATED COLORS FOR VISIBILITY --}}
+                                            {{-- VIDEO BUTTON --}}
                                             <button @click="videoUrl ? openModal='videoPreview' : triggerMakeVideo()" :disabled="videoStatus==='making' || isVideoTriggering || !imageUrl"
                                                 class="h-9 px-5 text-[10px] font-black rounded transition-all uppercase tracking-widest flex items-center gap-2 border disabled:opacity-10 shadow-lg"
                                                 :class="{
                                                     'bg-pink-500 border-pink-500 text-black animate-pulse shadow-[0_0_15px_rgba(236,72,153,0.4)]': videoStatus === 'making',
-                                                    'bg-pink-500/10 border-pink-500/20 text-pink-500 hover:bg-pink-500 hover:text-white shadow-pink-500/10': (videoUrl && videoStatus !== 'making'),
-                                                    'bg-[#1a1a1a] text-gray-400 border-white/10 hover:bg-white hover:text-black': (!videoUrl && videoStatus !== 'making')
+                                                    'bg-pink-500/10 border-pink-500/20 text-pink-400 hover:bg-pink-500 hover:text-white shadow-pink-500/10': (videoUrl && videoStatus !== 'making'),
+                                                    'bg-[#1a1a1a] text-gray-300 border-white/10 hover:bg-white hover:text-black': (!videoUrl && videoStatus !== 'making')
                                                 }">
                                                 <span x-text="videoStatus==='making' ? 'SYNTHESIZING...' : (videoUrl ? 'View Video' : 'Make Video')"></span>
+                                            </button>
+
+                                            {{-- REDESIGNED SOCIAL MEDIA BUTTON --}}
+                                            <button 
+                                                @click="$dispatch('notify', { message: 'Initializing Social Relay...', type: 'info' })"
+                                                class="h-9 px-5 bg-gradient-to-r from-indigo-600/10 to-blue-600/10 border border-indigo-500/20 hover:border-indigo-400/50 text-indigo-400 hover:text-white rounded transition-all duration-300 uppercase tracking-[0.12em] text-[9px] font-black flex items-center gap-2.5 group shadow-[0_4px_15px_rgba(99,102,241,0.05)] hover:shadow-[0_4px_20px_rgba(99,102,241,0.15)] relative overflow-hidden">
+                                                
+                                                {{-- Background Pulse Effect --}}
+                                                <div class="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                                
+                                                <svg class="w-3.5 h-3.5 transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                                                </svg>
+                                                <span class="relative">Post Assets</span>
                                             </button>
                                         </div>
                                     @endif
 
-                                    {{-- Directive Modal --}}
+                                    {{-- Modals and Previews remain unchanged --}}
                                     <template x-teleport="body">
                                         <div x-show="openModal" class="fixed inset-0 z-[999] flex items-center justify-center p-6 bg-black/95 backdrop-blur-md" x-cloak>
                                             <div x-show="['image','video','audio'].includes(openModal)" class="bg-[#0a0a0a] border border-white/10 w-full max-w-xl rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -202,10 +216,7 @@
                                                     <button @click="openModal=null" class="text-gray-500 hover:text-white text-lg">✕</button>
                                                 </div>
                                                 <div class="p-8">
-                                                    {{-- READ ONLY VIEW --}}
                                                     <div x-show="!isEditing" class="bg-black p-5 rounded border border-white/5 font-mono text-xs text-gray-400 max-h-[40vh] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner" x-text="openModal==='image' ? liveImagePrompt : (openModal==='video' ? liveVideoPrompt : liveAudioPrompt)"></div>
-                                                    
-                                                    {{-- EDIT VIEW --}}
                                                     <div x-show="isEditing">
                                                         <template x-if="openModal==='image'">
                                                             <textarea x-model="inputImage" class="w-full h-48 bg-black border border-white/10 rounded p-5 text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all"></textarea>
@@ -219,7 +230,6 @@
                                                     </div>
                                                 </div>
                                                 <div class="px-8 py-5 border-t border-white/5 flex justify-end gap-3 bg-white/[0.01]">
-                                                    {{-- LOGIC FOR EDIT BUTTON VISIBILITY --}}
                                                     <template x-if="(openModal==='image' && !imageUrl) || ( (openModal==='video' || openModal==='audio') && !videoUrl )">
                                                         <div class="flex gap-2">
                                                             <button @click="isEditing=!isEditing" class="px-5 py-2.5 bg-gray-800 text-white rounded text-[10px] font-black uppercase tracking-widest hover:bg-gray-700 transition-colors">
@@ -228,23 +238,20 @@
                                                             <button x-show="isEditing" @click="saveChanges()" :disabled="isSaving" class="px-5 py-2.5 bg-blue-600 text-white rounded text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20">Sync Data</button>
                                                         </div>
                                                     </template>
-                                                    
-                                                    {{-- LOGIC FOR LOCKED MESSAGE --}}
                                                     <template x-if="(openModal==='image' && imageUrl) || ( (openModal==='video' || openModal==='audio') && videoUrl )">
                                                         <span class="text-[9px] font-black text-gray-600 italic uppercase tracking-widest">Directive Finalized & Locked</span>
                                                     </template>
                                                 </div>
                                             </div>
 
-                                            {{-- Asset Preview --}}
-                                            <div x-show="openModal==='preview' || openModal==='videoPreview'" class="relative w-full max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+                                            <div x-show="openModal=== 'preview' || openModal==='videoPreview'" class="relative w-full max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300">
                                                 <button @click="openModal=null" class="absolute -top-12 right-0 text-white text-[10px] font-black uppercase tracking-[0.2em] bg-white/5 px-4 py-2 rounded-full hover:bg-red-500 transition-all">Close Pipeline ✕</button>
                                                 <div class="bg-black border border-white/10 rounded-xl overflow-hidden shadow-2xl">
                                                     <template x-if="openModal==='preview'">
                                                         <img :src="imageUrl" class="w-full max-h-[80vh] object-contain">
                                                     </template>
                                                     <template x-if="openModal==='videoPreview'">
-                                                        <video :src="videoUrl" class="w-full max-h-[80vh] object-contain" controls autoplay loop></video>
+                                                        <video :src="videoUrl" class="w-full max-h-[80vh] object-contain" controls autoplay loop playsinline></video>
                                                     </template>
                                                 </div>
                                             </div>
@@ -276,4 +283,4 @@
         ::-webkit-scrollbar-track { background: #050505; }
         ::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 10px; }
     </style>
-</x-app-layout>
+</x-app-layout>F
